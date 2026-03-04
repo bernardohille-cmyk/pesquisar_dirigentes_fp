@@ -29,8 +29,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Configuração incompleta: GEMINI_API_KEY em falta no Vercel.' }, { status: 500 });
     }
 
-    // Atualizado para o modelo mais recente de alto desempenho (2.5-flash-preview ou equivalente 3.0)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+    // Atualizado para o modelo gemini-2.0-flash, que é o mais recente e estável publicamente
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         tools: [{ google_search: {} }],
         generationConfig: { 
           responseMimeType: "application/json",
-          temperature: 0.1 // Mantemos a temperatura baixa para maior rigor técnico
+          temperature: 0.1
         }
       }),
     });
