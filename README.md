@@ -1,18 +1,18 @@
 # 🔎 Diretório de Dirigentes Públicos PT
 
-Ferramenta de consulta inteligente que cruza dados do SIOE, DRE e portais governamentais em tempo real.
+Consulta inteligente de cargos e contactos da Administração Pública.
 
-## 🛠️ Stack Tecnológica
-- **Framework:** Next.js 14 (App Router)
-- **IA:** Google Gemini 2.0 Flash (com Google Search Tool)
-- **Estilo:** CSS-in-JS (focado em performance e portabilidade)
+## ⚠️ Sobre o Limite de Pesquisa (Quota Exceeded)
+Este projeto utiliza a **Google Search Tool** via Gemini API. A Google impõe um limite de **20 requisições por minuto** na camada gratuita.
 
-## 🚦 Notas de Performance
-Este projeto utiliza a **Search Tool** do Gemini. 
-- **Limites:** A API gratuita tem uma quota de requisições por minuto.
-- **Dica:** Se receberes o aviso de "Limite atingido", aguarda alguns segundos. A IA precisa de tempo para indexar as fontes oficiais.
+### Como funciona a proteção:
+1. O sistema detecta o erro `429 (Too Many Requests)`.
+2. O botão de pesquisa é **bloqueado automaticamente por 30 segundos**.
+3. Um contador regressivo indica quando podes realizar a próxima consulta.
 
-## ⚙️ Instalação
-1. `npm install`
-2. Criar `.env.local` com `GEMINI_API_KEY=tuachave`
-3. `npm run dev`
+
+
+## 🛠️ Configuração
+1. Instala o Node.js.
+2. Define `GEMINI_API_KEY` no teu `.env.local`.
+3. Executa `npm run dev`.
