@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server';
 
 const SYSTEM_PROMPT = `És um assistente especializado em administração pública portuguesa. 
-A tua prioridade MÁXIMA é pesquisar no SIOE (sioe.dgaep.gov.pt), Diário da República (dre.pt) e Portal do Governo (portugal.gov.pt).
-Devolve SEMPRE e APENAS um objeto JSON válido. NÃO escrevas mais nenhum texto. NÃO uses formatação markdown. 
-Estrutura:
+A tua missão é pesquisar informação oficial e atualizada de forma rigorosa.
+Prioridade de fontes: SIOE (sioe.dgaep.gov.pt), Diário da República (dre.pt) e sites governamentais (.gov.pt).
+
+Responde EXCLUSIVAMENTE em formato JSON puro, sem markdown, com esta estrutura:
 {
   "entidades": [
     {
-      "nome": "Nome da entidade",
-      "sigla": "Sigla se existir",
-      "ministerio": "Ministério/tutela",
-      "missao": "Descrição breve da missão",
-      "dirigentes": [ { "cargo": "Ex: Presidente", "nome": "Nome completo", "desde": "Data ou vazio" } ],
-      "contactos": [ { "tipo": "Email / Telefone / Website", "valor": "contacto" } ],
-      "fonte": "URL da fonte oficial (preferencialmente SIOE ou DR)"
+      "nome": "Nome completo oficial",
+      "sigla": "Sigla (se existir)",
+      "ministerio": "Ministério/Tutela atualizado",
+      "missao": "Breve descrição da missão pública",
+      "dirigentes": [ { "cargo": "Cargo oficial", "nome": "Nome completo", "desde": "Data de nomeação/posse" } ],
+      "contactos": [ { "tipo": "Email/Telefone/Web", "valor": "valor" } ],
+      "fonte": "Link oficial (preferencialmente SIOE ou DRE)"
     }
   ],
-  "aviso": "Nota se aplicável"
+  "aviso": "Nota sobre a validade ou fonte dos dados"
 }`;
 
 export async function POST(request: Request) {
@@ -25,41 +26,55 @@ export async function POST(request: Request) {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'Falta a GEMINI_API_KEY no Vercel!' }, { status: 400 });
+      return NextResponse.json({ error: 'Configuração incompleta: GEMINI_API_KEY em falta no Vercel.' }, { status: 500 });
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    // Atualizado para o modelo mais recente de alto desempenho (2.5-flash-preview ou equivalente 3.0)
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        // Obrigamos o Google a focar-se no SIOE e DRE logo no pedido da pesquisa:
-        contents: [{ parts: [{ text: `Pesquisa informação atualizada (SIOE, dre.pt) sobre: "${termo}"` }] }],
-        tools: [{ google_search: {} }] 
+        contents: [{ 
+          parts: [{ text: `Pesquisa dados oficiais e atuais (especialmente no SIOE e Diário da República) sobre: "${termo}"` }] 
+        }],
+        tools: [{ google_search: {} }],
+        generationConfig: { 
+          responseMimeType: "application/json",
+          temperature: 0.1 // Mantemos a temperatura baixa para maior rigor técnico
+        }
       }),
     });
 
     const data = await response.json();
     
-    if (!response.ok) {
-      return NextResponse.json({ error: `Erro do Google: ${data.error?.message || 'Desconhecido'}` }, { status: 500 });
+    // Gestão de limites (Rate Limit 429)
+    if (response.status === 429) {
+      return NextResponse.json({ error: 'Limite de pesquisa atingido. Aguarde um momento.' }, { status: 429 });
     }
 
-    const text = data.candidates[0].content.parts[0].text;
-    
-    // O nosso código limpa o formato para garantir que não há erros
+    if (!response.ok) {
+      throw new Error(data.error?.message || "Erro na comunicação com os servidores da Google.");
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("A IA não conseguiu encontrar resultados para esta pesquisa.");
+
+    // Limpeza rigorosa para garantir que o JSON é válido
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     
     try {
       const jsonParsed = JSON.parse(cleanText);
       return NextResponse.json(jsonParsed);
-    } catch (parseError) {
-       const match = cleanText.match(/\{[\s\S]*\}/);
-       if(match) return NextResponse.json(JSON.parse(match[0]));
-       throw new Error("O Google não devolveu os dados no formato correto.");
+    } catch {
+      // Tentativa de recuperação de JSON mal formatado
+      const match = cleanText.match(/\{[\s\S]*\}/);
+      if (match) return NextResponse.json(JSON.parse(match[0]));
+      throw new Error("Erro ao processar o formato dos dados recebidos.");
     }
 
   } catch (error: any) {
-    return NextResponse.json({ error: `Erro: ${error.message}` }, { status: 500 });
+    console.error("Erro Backend:", error);
+    return NextResponse.json({ error: `Falha na Pesquisa: ${error.message}` }, { status: 500 });
   }
 }
