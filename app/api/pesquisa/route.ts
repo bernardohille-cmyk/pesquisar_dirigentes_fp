@@ -1,150 +1,80 @@
-diff --git a/app/api/pesquisa/route.ts b/app/api/pesquisa/route.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..4ca1e0c097eab26b78f9dd51e5932a2b3e3856f1
---- /dev/null
-+++ b/app/api/pesquisa/route.ts
-@@ -0,0 +1,144 @@
-+import { NextResponse } from "next/server";
-+
-+const SYSTEM_PROMPT = `És um assistente especializado em administração pública portuguesa.
-+Prioriza fontes oficiais: SIOE (sioe.dgaep.gov.pt), Diário da República (dre.pt), Portal do Governo (portugal.gov.pt) e outros domínios oficiais .gov.pt.
-+
-+Responde APENAS com JSON válido (sem markdown), na estrutura:
-+{
-+  "entidades": [
-+    {
-+      "nome": "Nome da entidade",
-+      "sigla": "Sigla se existir",
-+      "ministerio": "Ministério/tutela",
-+      "missao": "Descrição breve da missão",
-+      "dirigentes": [
-+        { "cargo": "Cargo", "nome": "Nome completo", "desde": "Data ou vazio" }
-+      ],
-+      "contactos": [
-+        { "tipo": "Email / Telefone / Website / Morada", "valor": "contacto" }
-+      ],
-+      "fonte": "URL oficial"
-+    }
-+  ],
-+  "aviso": "Nota sobre atualidade/limitações"
-+}
-+
-+Nunca inventes contactos. Se não souberes, deixa campo vazio.`;
-+
-+type PesquisaResponse = {
-+  entidades?: unknown;
-+  aviso?: unknown;
-+};
-+
-+function safeJsonExtract(raw: string): PesquisaResponse | null {
-+  try {
-+    return JSON.parse(raw);
-+  } catch {
-+    // no-op
-+  }
-+
-+  const withoutFences = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-+  try {
-+    return JSON.parse(withoutFences);
-+  } catch {
-+    // no-op
-+  }
-+
-+  const match = withoutFences.match(/\{[\s\S]*\}/);
-+  if (!match) return null;
-+
-+  try {
-+    return JSON.parse(match[0]);
-+  } catch {
-+    return null;
-+  }
-+}
-+
-+function normalisePayload(payload: PesquisaResponse) {
-+  return {
-+    entidades: Array.isArray(payload?.entidades) ? payload.entidades : [],
-+    aviso: typeof payload?.aviso === "string" ? payload.aviso : null,
-+  };
-+}
-+
-+async function wait(ms: number) {
-+  await new Promise((resolve) => setTimeout(resolve, ms));
-+}
-+
-+export async function POST(request: Request) {
-+  try {
-+    const body = await request.json().catch(() => null);
-+    const termo = typeof body?.termo === "string" ? body.termo.trim() : "";
-+
-+    if (!termo || termo.length < 2) {
-+      return NextResponse.json({ error: "Termo de pesquisa inválido." }, { status: 400 });
-+    }
-+
-+    const apiKey = process.env.GEMINI_API_KEY;
-+    if (!apiKey) {
-+      return NextResponse.json({ error: "Configuração em falta: GEMINI_API_KEY." }, { status: 500 });
-+    }
-+
-+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-+
-+    const makeRequest = async () =>
-+      fetch(endpoint, {
-+        method: "POST",
-+        headers: { "Content-Type": "application/json" },
-+        body: JSON.stringify({
-+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-+          contents: [
-+            {
-+              parts: [
-+                {
-+                  text: `Pesquisa informação atualizada sobre: "${termo}". Usa prioritariamente SIOE, DRE e portais oficiais. Responde só em JSON válido.`,
-+                },
-+              ],
-+            },
-+          ],
-+          tools: [{ google_search: {} }],
-+          generationConfig: {
-+            temperature: 0.1,
-+            responseMimeType: "application/json",
-+          },
-+        }),
-+      });
-+
-+    let response = await makeRequest();
-+    if (response.status === 429) {
-+      const retryAfter = Number(response.headers.get("retry-after") ?? "0");
-+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500;
-+      await wait(delayMs);
-+      response = await makeRequest();
-+    }
-+
-+    const data = await response.json().catch(() => ({}));
-+
-+    if (response.status === 429) {
-+      return NextResponse.json(
-+        { error: "Limite temporário atingido. Aguarda 1 minuto e tenta novamente." },
-+        { status: 429 },
-+      );
-+    }
-+
-+    if (!response.ok) {
-+      const msg = data?.error?.message || "Falha na comunicação com o provedor de IA.";
-+      return NextResponse.json({ error: msg }, { status: 502 });
-+    }
-+
-+    const text = data?.candidates?.[0]?.content?.parts?.find((p: { text?: string }) => typeof p?.text === "string")?.text;
-+    if (!text) {
-+      return NextResponse.json({ error: "Resposta vazia da IA." }, { status: 502 });
-+    }
-+
-+    const parsed = safeJsonExtract(text);
-+    if (!parsed) {
-+      return NextResponse.json({ error: "A IA respondeu num formato inválido." }, { status: 502 });
-+    }
-+
-+    return NextResponse.json(normalisePayload(parsed));
-+  } catch (error) {
-+    const message = error instanceof Error ? error.message : "Erro interno.";
-+    return NextResponse.json({ error: `Erro interno: ${message}` }, { status: 500 });
-+  }
-+}
+import { NextResponse } from 'next/server';
+
+const SYSTEM_PROMPT = `És um assistente especializado em administração pública portuguesa. 
+A tua missão é pesquisar informação oficial e atualizada de forma rigorosa.
+Prioridade de fontes: SIOE (sioe.dgaep.gov.pt), Diário da República (dre.pt) e sites governamentais (.gov.pt).
+
+Responde EXCLUSIVAMENTE em formato JSON puro, sem markdown, com esta estrutura:
+{
+  "entidades": [
+    {
+      "nome": "Nome completo oficial",
+      "sigla": "Sigla (se existir)",
+      "ministerio": "Ministério/Tutela atualizado",
+      "missao": "Breve descrição da missão pública",
+      "dirigentes": [ { "cargo": "Cargo oficial", "nome": "Nome completo", "desde": "Data de nomeação/posse" } ],
+      "contactos": [ { "tipo": "Email/Telefone/Web", "valor": "valor" } ],
+      "fonte": "Link oficial (preferencialmente SIOE ou DRE)"
+    }
+  ],
+  "aviso": "Nota sobre a validade ou fonte dos dados"
+}`;
+
+export async function POST(request: Request) {
+  try {
+    const { termo } = await request.json();
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json({ error: 'Configuração incompleta: GEMINI_API_KEY em falta no Vercel.' }, { status: 500 });
+    }
+
+    // Atualizado para o modelo gemini-2.0-flash, que é o mais recente e estável publicamente
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ 
+          parts: [{ text: `Pesquisa dados oficiais e atuais (especialmente no SIOE e Diário da República) sobre: "${termo}"` }] 
+        }],
+        tools: [{ google_search: {} }],
+        generationConfig: { 
+          responseMimeType: "application/json",
+          temperature: 0.1
+        }
+      }),
+    });
+
+    const data = await response.json();
+    
+    // Gestão de limites (Rate Limit 429)
+    if (response.status === 429) {
+      return NextResponse.json({ error: 'Limite de pesquisa atingido. Aguarde um momento.' }, { status: 429 });
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || "Erro na comunicação com os servidores da Google.");
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("A IA não conseguiu encontrar resultados para esta pesquisa.");
+
+    // Limpeza rigorosa para garantir que o JSON é válido
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    try {
+      const jsonParsed = JSON.parse(cleanText);
+      return NextResponse.json(jsonParsed);
+    } catch {
+      // Tentativa de recuperação de JSON mal formatado
+      const match = cleanText.match(/\{[\s\S]*\}/);
+      if (match) return NextResponse.json(JSON.parse(match[0]));
+      throw new Error("Erro ao processar o formato dos dados recebidos.");
+    }
+
+  } catch (error: any) {
+    console.error("Erro Backend:", error);
+    return NextResponse.json({ error: `Falha na Pesquisa: ${error.message}` }, { status: 500 });
+  }
+}
