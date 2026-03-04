@@ -1,10 +1,29 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 
+const sugestoes = [
+  "AICEP Portugal Global",
+  "Agência para a Modernização Administrativa",
+  "Instituto Nacional de Estatística",
+  "Direção-Geral da Saúde",
+  "Autoridade Tributária",
+  "Instituto do Emprego e Formação Profissional",
+  "Serviços de Estrangeiros e Fronteiras",
+];
+
 function CopyButton({ text }: any) {
   const [copied, setCopied] = useState(false);
   return (
-    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }} style={{ background: "none", border: "1px solid #d0d0d0", borderRadius: 4, padding: "2px 8px", fontSize: 11, cursor: "pointer", color: copied ? "#1a6e3c" : "#666", marginLeft: 6, transition: "all 0.2s" }}>
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      style={{
+        background: "none", border: "1px solid #d0d0d0", borderRadius: 4, padding: "2px 8px", fontSize: 11, cursor: "pointer", color: copied ? "#1a6e3c" : "#666", marginLeft: 6, transition: "all 0.2s",
+      }}
+    >
       {copied ? "✓" : "copiar"}
     </button>
   );
@@ -27,12 +46,13 @@ function EntidadeCard({ entidade }: any) {
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 17, fontWeight: 700, color: "#1a2540", fontFamily: "'Georgia', serif" }}>{entidade.nome}</span>
-            {entidade.sigla && <span style={{ background: "#1a4d8f", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>{entidade.sigla}</span>}
+            {entidade.sigla && <span style={{ background: "#1a4d8f", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.5 }}>{entidade.sigla}</span>}
           </div>
           {entidade.ministerio && <div style={{ fontSize: 12, color: "#6b7a99", marginTop: 4, fontFamily: "monospace" }}>{entidade.ministerio}</div>}
         </div>
         <span style={{ fontSize: 18, color: "#999", marginLeft: 12 }}>{expanded ? "▲" : "▼"}</span>
       </div>
+
       {expanded && (
         <div style={{ padding: "16px 20px" }}>
           {entidade.missao && <p style={{ fontSize: 13, color: "#4a5568", lineHeight: 1.6, margin: "0 0 16px 0", fontStyle: "italic" }}>{entidade.missao}</p>}
@@ -67,24 +87,34 @@ function EntidadeCard({ entidade }: any) {
               </div>
             )}
           </div>
+          {entidade.fonte && (
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #f0f0f0" }}>
+              <span style={{ fontSize: 11, color: "#aaa" }}>Fonte: </span>
+              <a href={entidade.fonte} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1a4d8f" }}>{entidade.fonte}</a>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-const sugestoes = ["AICEP", "Agência para a Modernização Administrativa", "Direção-Geral da Saúde", "Autoridade Tributária", "SEF"];
-
 export default function App() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<any[] | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [historico, setHistorico] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   async function pesquisar(q?: string) {
     const termo = q || query;
     if (!termo.trim()) return;
-    setLoading(true); setResultado(null); setErro(null);
+    setLoading(true); setResultado(null); setErro(null); setAviso(null);
+    setHistorico(h => [termo, ...h.filter(x => x !== termo)].slice(0, 6));
 
     try {
       const response = await fetch("/api/pesquisa", {
@@ -94,38 +124,81 @@ export default function App() {
       });
 
       const data = await response.json();
-      
-      // AGORA MOSTRA O ERRO EXATO!
-      if (!response.ok) throw new Error(data.error || "Erro misterioso no servidor.");
-      if (data.error) throw new Error(data.error);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao consultar os dados.");
+      }
 
       setResultado(Array.isArray(data.entidades) ? data.entidades : []);
+      setAviso(data.aviso || null);
     } catch (e: any) {
-      setErro(e.message); // Vai imprimir o erro real do Google ou do nosso Backend
+      setErro(e.message || "Erro desconhecido. Tenta novamente.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4fa", fontFamily: "sans-serif" }}>
-      <div style={{ background: "#1a2f5e", color: "#fff", padding: "20px 24px", fontWeight: "bold", fontSize: 20 }}>🔎 Diretório de Dirigentes Públicos</div>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #f0f4fa 0%, #e8eef7 100%)", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+      <div style={{ background: "#1a2f5e", color: "#fff", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.2)" }}>
+        <div style={{ width: 38, height: 38, background: "linear-gradient(135deg, #c8102e 50%, #006600 50%)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🔎</div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, fontFamily: "'Georgia', serif" }}>Diretório de Dirigentes Públicos</div>
+          <div style={{ fontSize: 12, color: "#a0b0cc", marginTop: 1 }}>Pesquisa em tempo real · Fontes oficiais</div>
+        </div>
+      </div>
+
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px" }}>
-        <div style={{ background: "#fff", borderRadius: 12, padding: 24, marginBottom: 28, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: 24, marginBottom: 28 }}>
           <div style={{ display: "flex", gap: 10 }}>
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && pesquisar()} placeholder="Ex: Direção-Geral da Saúde..." style={{ flex: 1, padding: "12px", border: "1px solid #ccc", borderRadius: 8 }} />
-            <button onClick={() => pesquisar()} disabled={loading} style={{ background: "#1a2f5e", color: "#fff", padding: "0 20px", borderRadius: 8, cursor: "pointer" }}>{loading ? "..." : "Pesquisar"}</button>
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && pesquisar()} placeholder="Ex: Direção-Geral da Saúde, AICEP, Ana Paula Zacarias..." style={{ flex: 1, padding: "12px 16px", fontSize: 15, border: "2px solid #e0e4ea", borderRadius: 8, outline: "none", transition: "border-color 0.2s", fontFamily: "inherit" }} onFocus={e => e.target.style.borderColor = "#1a4d8f"} onBlur={e => e.target.style.borderColor = "#e0e4ea"} />
+            <button onClick={() => pesquisar()} disabled={loading || !query.trim()} style={{ background: loading ? "#aaa" : "#1a2f5e", color: "#fff", border: "none", borderRadius: 8, padding: "12px 22px", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", transition: "background 0.2s", whiteSpace: "nowrap" }}>
+              {loading ? "A pesquisar…" : "Pesquisar"}
+            </button>
           </div>
+
           {!resultado && !loading && (
-            <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {sugestoes.map(s => <button key={s} onClick={() => { setQuery(s); pesquisar(s); }} style={{ padding: "4px 10px", borderRadius: 20, border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontSize: 12 }}>{s}</button>)}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, color: "#999", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Pesquisas rápidas</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {sugestoes.map(s => <button key={s} onClick={() => { setQuery(s); pesquisar(s); }} style={{ background: "#f0f4fa", border: "1px solid #dce3ee", borderRadius: 20, padding: "5px 12px", fontSize: 12, color: "#3a5080", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }} onMouseEnter={e => { (e.target as any).style.background = "#dce8fa"; (e.target as any).style.borderColor = "#1a4d8f"; }} onMouseLeave={e => { (e.target as any).style.background = "#f0f4fa"; (e.target as any).style.borderColor = "#dce3ee"; }}>{s}</button>)}
+              </div>
+            </div>
+          )}
+
+          {historico.length > 0 && !loading && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: "#bbb", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Recentes</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {historico.map(h => <button key={h} onClick={() => { setQuery(h); pesquisar(h); }} style={{ background: "none", border: "1px dashed #ccc", borderRadius: 20, padding: "4px 10px", fontSize: 11, color: "#888", cursor: "pointer", fontFamily: "inherit" }}>↩ {h}</button>)}
+              </div>
             </div>
           )}
         </div>
 
-        {loading && <div style={{ textAlign: "center", padding: "40px" }}>A pesquisar...</div>}
-        {erro && <div style={{ background: "#fff5f5", border: "2px solid #fcc", borderRadius: 8, padding: "20px", color: "#c00", fontWeight: "bold" }}>🚨 ERRO: {erro}</div>}
+        {loading && (
+          <div style={{ textAlign: "center", padding: "60px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 12, display: "inline-block" }}>⏳</div>
+            <div style={{ fontSize: 14, color: "#6b7a99" }}>A consultar fontes oficiais…</div>
+            <div style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>Google · Diário da República · Portal do Governo</div>
+          </div>
+        )}
+
+        {erro && <div style={{ background: "#fff5f5", border: "1px solid #fcc", borderRadius: 8, padding: "14px 18px", color: "#c00", fontSize: 14 }}>⚠ {erro}</div>}
+        {aviso && <div style={{ background: "#fffbea", border: "1px solid #f5d050", borderRadius: 8, padding: "10px 16px", color: "#7a6000", fontSize: 12, marginBottom: 16 }}>ℹ {aviso}</div>}
+        
+        {resultado && resultado.length === 0 && (
+          <div style={{ textAlign: "center", padding: "50px 0", color: "#999", fontSize: 14 }}>
+            Nenhum resultado encontrado para esta pesquisa.<br />
+            <span style={{ fontSize: 12 }}>Tenta com o nome completo ou sigla oficial da entidade.</span>
+          </div>
+        )}
+
         {resultado && resultado.map((e, i) => <EntidadeCard key={i} entidade={e} />)}
+
+        <div style={{ textAlign: "center", marginTop: 32, fontSize: 11, color: "#bbb" }}>
+          Dados consultados em tempo real a partir de fontes públicas oficiais.
+        </div>
       </div>
     </div>
   );
