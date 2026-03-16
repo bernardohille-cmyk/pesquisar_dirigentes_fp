@@ -1,18 +1,15 @@
 name: Atualizar base SIOE
 
-on:
-  # Corre automaticamente toda segunda-feira às 6h (hora de Lisboa = UTC+1)
+"on":
   schedule:
     - cron: '0 5 * * 1'
-
-  # Permite correr manualmente no GitHub (Actions → Run workflow)
   workflow_dispatch:
 
 jobs:
   download-sioe:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # precisa para fazer commit do sioe.json
+      contents: write
 
     steps:
       - name: Checkout
@@ -23,13 +20,28 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Testar ligação ao SIOE
+        run: |
+          echo "A testar ligação ao servidor SIOE..."
+          curl -v --max-time 10 "https://pr-wfssioe.dgaep.gov.pt/SIOEPublicService.svc" || echo "AVISO: Servidor não acessível"
+
       - name: Correr download SIOE
         run: node scripts/download-sioe.mjs
+
+      - name: Verificar ficheiro criado
+        run: |
+          if [ -f "data/sioe.json" ]; then
+            echo "✅ sioe.json criado com sucesso"
+            wc -c data/sioe.json
+          else
+            echo "❌ sioe.json NÃO foi criado"
+            exit 1
+          fi
 
       - name: Commit e push sioe.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/sioe.json
-          git diff --staged --quiet || git commit -m "chore: atualizar base SIOE [$(date +'%Y-%m-%d')]"
+          git diff --staged --quiet && echo "Sem alterações" || git commit -m "chore: atualizar base SIOE [$(date +'%Y-%m-%d')]"
           git push
